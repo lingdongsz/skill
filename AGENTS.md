@@ -15,7 +15,7 @@ Mercado Libre 选品调研工具集（蓝鲸选品），通过 Python 脚本调�
 /workspace/projects/
 ├── .coze                          # 项目配置
 ├── AGENTS.md                      # 本文件
-├── ljxp-skills/
+├── ljxp/
 │   ├── SKILL.md                   # Skill 定义（标准 9 步流程、功能清单、参数说明）
 │   ├── references/
 │   │   ├── api_reference.md       # API 总览
@@ -49,7 +49,7 @@ Mercado Libre 选品调研工具集（蓝鲸选品），通过 Python 脚本调�
 ## 运行与预览
 
 - 本项目为脚本/工具集合，非 web/小程序/App 产物，不支持预览（`preview_enable = "disabled"`）
-- 脚本执行方式：`python3 ljxp-skills/scripts/<脚本名>.py --site <站点> [其他参数]`
+- 脚本执行方式：`python3 ljxp/scripts/<脚本名>.py --site <站点> [其他参数]`
 - 需要设置环境变量 `LJXP_TOKEN` 提供 API 认证
 
 ## 用户偏好与长期约束

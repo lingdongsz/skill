@@ -34,7 +34,7 @@
 
 > ⚠️ **积分消耗提醒（方案 C 本地缓存）**：脚本内置了按站点缓存。
 >
-> - **首次调用**某站点（无本地缓存）：真实请求 `/category/tree?siteId=XXX`，消耗 **10 积分**，并把结果写入 `skills/ljxp-skills/cache/category_tree_<站点>.json`。
+> - **首次调用**某站点（无本地缓存）：真实请求 `/category/tree?siteId=XXX`，消耗 **10 积分**，并把结果写入 `skills/ljxp/cache/category_tree_<站点>.json`。
 > - **后续同站点查询**（缓存存在、未过期、未加 `--refresh`）：直接读本地文件，**不调用后端接口、不消耗积分**。缓存命中时甚至可以省略 `--token`。
 > - 默认缓存有效期 7\*\* 天\*\*（可用 `--cache-ttl` 调整，`--cache-ttl 0` 表示永不过期）。加 `--refresh` 可强制重新拉取并覆盖缓存（本次消耗 10 积分）。
 > - 建议：首次查一个站点时顺便跑通，之后所有关键词搜索、深度浏览都用缓存免费搞定；`--refresh` 只在后端类目确实更新过的时候再用。
@@ -153,7 +153,7 @@
    - 商品搜索：`search_items.py --category-id <ID>`
    - 竞争店铺/商品/品牌：`trends.py --type top_sellers / top_items / top_brands --category-id <ID>`
 4. **同一个站点，第一次查花 10 积分写入缓存，之后所有查询都免费**。不管查多少个关键词、看多少层深度，都不会再请求后端接口。
-   - 缓存文件位置：`skills/ljxp-skills/cache/category_tree_<站点>.json`（可手动删除，删除后下次会重新花 10 积分拉取）。
+   - 缓存文件位置：`skills/ljxp/cache/category_tree_<站点>.json`（可手动删除，删除后下次会重新花 10 积分拉取）。
    - 要查看缓存写入时间：命令运行后 stderr 里会打印「本地缓存（写入于 YYYY-MM-DD HH:MM:SS）」。
    - 缓存 7 天后自动失效。想强制更新（后端加了新类目时用）：加 `--refresh` 参数，同时需要提供 `--token`。
 5. **跨站点对比**：不同站点（MLM vs MLB 等）的类目 ID 和层级不同，**类目 ID 不能跨站复用**。

@@ -63,7 +63,7 @@ from utils import (
 # 缓存配置
 # ============================================================
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# 缓存放 skills/ljxp-skills/cache/ 目录下，与 scripts/ 同级
+# 缓存放 skills/ljxp/cache/ 目录下，与 scripts/ 同级
 CACHE_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "cache"))
 DEFAULT_CACHE_TTL = 7 * 24 * 3600  # 7 天（秒）
 
