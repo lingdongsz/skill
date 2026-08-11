@@ -11,5 +11,8 @@ preview_enable = "disabled"
 [deploy.profile]
 kind = "skill"
 
+[skill]
+skill_package = "ljxp-skills"
+
 [subprojects]
 path = ["."]
