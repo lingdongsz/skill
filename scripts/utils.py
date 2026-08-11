@@ -17,7 +17,7 @@ import urllib.error
 
 BASE_URL = "https://xpskills.lingdongsz.com/api"
 
-# 获取技能包根目录（ljxp/）
+# 获取技能包根目录（项目根目录）
 _SKILL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # HTML 模板路径（技能包内 references/search_results_template.html）
 _HTML_TEMPLATE = os.path.join(_SKILL_ROOT, "references", "search_results_template.html")

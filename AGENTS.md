@@ -15,29 +15,28 @@ Mercado Libre 选品调研工具集（蓝鲸选品），通过 Python 脚本调�
 /workspace/projects/
 ├── .coze                          # 项目配置
 ├── AGENTS.md                      # 本文件
-├── ljxp/
-│   ├── SKILL.md                   # Skill 定义（标准 9 步流程、功能清单、参数说明）
-│   ├── references/
-│   │   ├── api_reference.md       # API 总览
-│   │   ├── search_results_template.html  # 搜索结果 HTML 展示模板
-│   │   └── api/                   # 各模块 API 参考文档
-│   │       ├── category.md
-│   │       ├── items.md
-│   │       ├── keywords.md
-│   │       ├── sellers.md
-│   │       ├── trends.md
-│   │       ├── catalogs.md
-│   │       ├── rate-shipping.md
-│   │       └── users.md
-│   └── scripts/                   # Python 脚本（CLI 工具）
-│       ├── utils.py               # 通用模块（HTTP、鉴权、格式化）
-│       ├── category_tree.py       # 类目树查询
-│       ├── search_items.py        # 商品搜索/竞品分析
-│       ├── search_keywords.py     # 关键词研究
-│       ├── search_sellers.py      # 店铺搜索
-│       ├── trends.py              # 趋势/价格带/品牌分析
-│       ├── catalog_search.py      # 目录链接搜索
-│       └── get_item_info.py       # 商品详情/利润测算
+├── SKILL.md                       # Skill 定义（标准 9 步流程、功能清单、参数说明）
+├── references/
+│   ├── api_reference.md           # API 总览
+│   ├── search_results_template.html  # 搜索结果 HTML 展示模板
+│   └── api/                       # 各模块 API 参考文档
+│       ├── category.md
+│       ├── items.md
+│       ├── keywords.md
+│       ├── sellers.md
+│       ├── trends.md
+│       ├── catalogs.md
+│       ├── rate-shipping.md
+│       └── users.md
+└── scripts/                       # Python 脚本（CLI 工具）
+    ├── utils.py                   # 通用模块（HTTP、鉴权、格式化）
+    ├── category_tree.py           # 类目树查询
+    ├── search_items.py            # 商品搜索/竞品分析
+    ├── search_keywords.py         # 关键词研究
+    ├── search_sellers.py          # 店铺搜索
+    ├── trends.py                  # 趋势/价格带/品牌分析
+    ├── catalog_search.py          # 目录链接搜索
+    └── get_item_info.py           # 商品详情/利润测算
 ```
 
 ## 关键入口 / 核心模块
@@ -49,7 +48,7 @@ Mercado Libre 选品调研工具集（蓝鲸选品），通过 Python 脚本调�
 ## 运行与预览
 
 - 本项目为脚本/工具集合，非 web/小程序/App 产物，不支持预览（`preview_enable = "disabled"`）
-- 脚本执行方式：`python3 ljxp/scripts/<脚本名>.py --site <站点> [其他参数]`
+- 脚本执行方式：`python3 scripts/<脚本名>.py --site <站点> [其他参数]`
 - 需要设置环境变量 `LJXP_TOKEN` 提供 API 认证
 
 ## 用户偏好与长期约束
