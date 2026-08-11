@@ -12,6 +12,7 @@ preview_enable = "disabled"
 kind = "skill"
 
 [skill]
+name = "ljxp"
 skill_package = "ljxp-skills"
 
 [subprojects]
