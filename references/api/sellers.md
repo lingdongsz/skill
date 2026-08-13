@@ -1,87 +1,58 @@
 # 店铺接口
 
-用于店铺搜索、卖家画像、店铺风控和对标店铺池构建。
+用于店铺搜索、卖家画像、风控和对标店铺池构建。
 
-## 对应脚本路径
+## 对应脚本
 
-- 店铺搜索：`scripts/search_sellers.py`
-- 通用请求、鉴权和格式化工具：`scripts/utils.py`
+- 店铺搜索：`scripts/search_sellers.py`（封装 `POST /seller/search`）
 
-## 店铺相关接口选择规则
+## 接口选择规则
 
-`search_sellers.py` 封装 1 个搜索接口：
+- **何时调用**：找本土/跨境对标店铺、找绿级/铂金店铺、某类目店铺画像、风控画像
+- **何时不调**：只要商品列表/详情、不涉及店铺维度筛选
+- **不要默认全查**：按需选 sellerType/levelId/powerType，先拿 50 个；默认绿级+铂金即可
+- **组合**：拿到店铺 `id` 后用 `/items/search? sellerId=` 查商品矩阵，**不要对每个结果店铺都跑**
 
-- `/seller/search`：多维度店铺列表搜索（按站点/店铺类型/等级/优质卖家级别筛选）。
-  - **什么时候调用**：用户要"找本土对标店铺""找跨境头部卖家""找绿级/铂金店铺""看某类目下都有什么店""店铺风控画像"。
-  - **什么时候不调用**：用户只要商品列表、只要商品详情；不涉及店铺维度筛选。
-  - **不要默认全查**：
-    - 按需选 `sellerType`（LOCAL/CBT），不要一次把所有类型都跑一遍。
-    - 按需选 `levelId`（5\_green/4\_light\_green/3\_yellow）和 `powerType`（platinum/gold/silver），默认只要绿级+铂金即可，不要默认把所有等级和贵金属级别都轮询。
-    - 先拿前 50 个看是否够用，不要超大分页。
+---
 
-### 调用边界与组合
+## POST /seller/search 店铺搜索
 
-- **判断本土/跨境竞争格局**：用 `/seller/search` 分别筛 `LOCAL` 和 `CBT` 两类店铺数量和销量占比（或用 `trends.py` 的 `inventory_type` + `top_sellers`，不要两个工具重复做同一件事）。
-- **看店铺商品矩阵**：拿到店铺 `id` 后，再用 `/items/search` 按 `sellerId` 搜索该店铺商品；但不要对搜索结果里每个店铺都跑商品搜索。
-- **找高质量对标店铺**：优先 `LOCAL` + `5_green` + `platinum`，不要把黄级和白银级混进对标池除非用户明确要求。
+> ⚡ 每次 **2 积分** ｜ 方法：POST
 
-## `/seller/search` 店铺搜索
+### 请求参数
 
-> ⚡ **积分消耗**：每次调用消耗 **2 积分**
+| 必填 | 参数 | 枚举/说明 | 脚本已封装 CLI |
+|:-:|---|---|:-:|
+| ✅ | siteId | `MLM`/`MLB`/`MLC`/`MLA`/`MCO`，默认 MLM | ✅ `--site`（默认 MLM） |
+| | pageNo/pageSize | 默认 1/50 | ✅ `--page-no` / `--page-size` |
+| | sellerType | `LOCAL`（本土）/ `CBT`（跨境）/ `CBT_OTHER` / `CBT_FBM` | ✅ `--seller-type`（默认 LOCAL） |
+| | levelId | 优秀绿级/良好浅绿/一般黄/较差橙/很差红 | ✅ 脚本只开放前 3 档：`5_green` / `4_light_green` / `3_yellow`（默认 `5_green`）；`2_orange` / `1_red` 后端接受但脚本 choices 未封装 |
+| | powerType | `platinum`（铂金）/ `gold`（黄金）/ `silver`（白银）/ 空=普通 | ✅ `--power-type`（默认 platinum） |
 
-返回符合筛选条件的店铺列表。
+### CLI 映射
 
-### SellerDetail 基本字段
+`siteId→--site`，`sellerType→--seller-type`，`levelId→--level-id`，`powerType→--power-type`。
+脚本默认值：`--site MLM --seller-type LOCAL --level-id 5_green --power-type platinum`（对标高质量绿级铂金本土店，用户要降档再手动传）。
 
-- `id`: 卖家 ID
-- `name`: 卖家名称
-- `permalink`: 店铺永久链接
-- `remark`: 备注
-- `site_id`: 站点 ID
-- `country_id`: 国家 ID
-- `time_zone`: 时区
-- `registration_date`: 注册日期
-- `seller_status`: 卖家状态
-- `power_seller_status`: 优质卖家状态
-- `level_id`: 等级 ID
-- `seller_type`: 卖家类型
-- `item_total`: 商品总数
-- `sale_total`: 近一年销售总数
-- `sale_completed`: 60 天完成销售数
-- `sell_completed`: 作为卖家完成销售数
-- `completed60`: 60 天完成数
-- `sell_canceled`: 取消销售数
-- `sale_cancel`: 销售取消数
-- `cancel60` / `cancel60_rate`: 60 天取消数 / 取消率
-- `delayed60` / `delayed60_rate`: 60 天延迟数 / 延迟率
-- `claims60` / `claims60_rate`: 60 天投诉数 / 投诉率
-- `sa30` / `sa60` / `sa90`: SA 指标
-- `uddt`: 更新时间
+```bash
+# 墨西哥本土铂金绿店（高质量对标）
+python scripts/search_sellers.py --token <TKN> --site MLM \
+  --seller-type LOCAL --level-id 5_green --power-type platinum
+```
 
-### SellerAddress
+### SellerDetail 关键字段
 
-- `city`: 城市
-- `state`: 州/省
+- 基本：`id / name / permalink / site_id / country_id / registration_date / seller_status / power_seller_status / level_id / seller_type`
+- 商品销量：`item_total / sale_total / sale_completed / sell_completed / completed60`
+- 风控（核心指标）：`sell_canceled / sale_cancel` → `cancel60 / cancel60_rate`；`delayed60 / delayed60_rate`；`claims60 / claims60_rate`
+- SA：`sa30 / sa60 / sa90`
+- 评价：`SellerRatings.positive / neutral / negative`
+- 地址：`SellerAddress.city / state`
 
-### SellerRatings
+---
 
-- `positive`: 好评数
-- `neutral`: 中评数
-- `negative`: 差评数
+## 本模块积分明细表
 
-## 使用提示
-
-- 找高质量本土对标店铺时，优先筛选 `seller_type=LOCAL`、绿级或浅绿级、铂金/黄金优质卖家。
-- 判断跨境竞争时，关注 `seller_type=CBT` 及相关 CBT 类型。
-- 风险判断优先看取消率、延迟率、投诉率和 SA 指标。
-- 拿到 `id` 后，可用商品搜索按 `sellerId` 查看店铺商品矩阵。
-
-## 本模块接口积分明细表
-
-> 下表为本模块包含的所有接口及其单次积分消耗，与 SKILL.md 总表 / users.md 全表完全一致。
-> 同一个接口调用多次需累计计算（例如按店铺类型分两页查询 = 2 × 2 = 4 积分）。
-
-| 接口路径 | 功能描述 | 消耗积分 |
-|:---|:---|---:|
-| `POST /seller/search` | 店铺查询（分页列表） | 2 |
-
+| 接口 | 功能 | 积分 |
+|---|---|---:|
+| `POST /seller/search` | 店铺分页查询 | 2 |

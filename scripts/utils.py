@@ -17,7 +17,7 @@ import urllib.error
 
 BASE_URL = "https://xpskills.lingdongsz.com/api"
 
-# 获取技能包根目录（项目根目录）
+# 获取技能包根目录（ljxp-skills/）
 _SKILL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # HTML 模板路径（技能包内 references/search_results_template.html）
 _HTML_TEMPLATE = os.path.join(_SKILL_ROOT, "references", "search_results_template.html")
@@ -49,7 +49,7 @@ def get_token(args_token=None):
     return token
 
 
-def request_get(path, token, params=None):
+def request_get(path, token, params=None, timeout=30):
     """发送 GET 请求"""
     url = BASE_URL + path
     if params:
@@ -64,7 +64,7 @@ def request_get(path, token, params=None):
     req = urllib.request.Request(url, headers=headers, method="GET")
 
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8", errors="replace")
@@ -79,18 +79,18 @@ def request_get(path, token, params=None):
         sys.exit(1)
 
 
-def request_post(path, token, body):
+def request_post(path, token, body, timeout=30):
     """发送 POST 请求"""
     url = BASE_URL + path
     headers = {
-        "Authorization": token,
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
     data = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
 
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8", errors="replace")

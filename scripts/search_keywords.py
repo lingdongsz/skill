@@ -79,7 +79,7 @@ def main():
     print(f"正在查询 {SITE_NAMES.get(args.site, args.site)} 热搜词 "
           f"({args.search_type}: {args.run_date})...", file=sys.stderr)
 
-    response = request_post("/keywords/search", token, body)
+    response = request_post("/keywords/search", token, body, timeout=120)
     check_response(response)
 
     if args.output == "json":

@@ -1,124 +1,93 @@
 # 目录链接接口
 
-用于 Mercado Libre 目录链接、官链、跟卖商品、BSR 和目录每日数据分析。
+用于目录链接、官链、跟卖商品、BSR 和每日数据分析。
 
-## 对应脚本路径
+## 对应脚本
 
-- 目录链接查询：`scripts/catalog_search.py`
-- 通用请求、鉴权和格式化工具：`scripts/utils.py`
+- 目录链接查询：`scripts/catalog_search.py`（3 个模式：默认 search / 默认 --product-id 进 info / --product-id + --daily 进 daily）
 
-## 目录链接相关接口选择规则
+## 接口选择规则
 
-`catalog_search.py` 封装 3 个目录关联接口：
+| 接口 | 模式参数 | 何时调用 | 何时不调 |
+|---|---|---|---|
+| `POST /catalogs/search` | 默认（无 --product-id） | 找官链机会、按关键词/类目筛选 | 只要单链接详情/BSR趋势 |
+| `GET /catalog/info` | `--product-id <ID>`（不加 --daily） | 看某目录链接的跟卖结构（followItems）、价格/库存/销量对比 | 只看搜索列表、只看BSR日趋势 |
+| `GET /catalog/daily` | `--product-id <ID> --daily` | 看某链接BSR是否稳定、销量/价格变动 | 只看静态详情、只看跟卖结构 |
 
-- `/catalogs/search`：目录链接列表搜索（按关键词/类目/销量/BSR/价格/评分/重量/跟卖状态筛选）。
-  - **什么时候调用**：用户要"找官链机会""找目录链接""看跟卖品池""按 BSR 找品""筛选高销量目录商品"。
-  - **什么时候不调用**：用户只问单个目录链接的详情、跟卖结构、BSR 趋势；不需要列表页。
-  - **不要默认全查**：按需设置 `pageSize`，不要一上来拉超大分页。
+**组合规则**：用户明确要求"完整分析"才同时调 info+daily；普通选品先 search 筛候选，再按需深挖。
 
-- `/catalog/info`：单个目录链接详情 + 跟卖商品列表（`followItems`）。
-  - **什么时候调用**：用户问某个目录链接里有哪些卖家在跟卖、跟卖价格/库存/销量对比、谁是跟卖头部。
-  - **什么时候不调用**：只看目录搜索列表、只看 BSR 日趋势。
+---
 
-- `/catalog/daily`：目录链接每日 BSR、销量、价格趋势。
-  - **什么时候调用**：用户问某个目录链接 BSR 是否稳定、销量是否在掉、价格变动趋势。
-  - **什么时候不调用**：只看静态详情、只看跟卖结构。
+## POST /catalogs/search 目录搜索
 
-### 组合调用规则
+> ⚡ 每次 **4 积分** ｜ 方法：POST
 
-- 只有当用户要求"完整分析这个目录链接""把这个官链从跟卖到 BSR 都扒一遍"时，才同时查 `/catalog/info` + `/catalog/daily`。
-- 普通目录选品：先 `/catalogs/search` 筛出候选链接，再对个别链接按需查 info 或 daily，不要默认每个链接都查详情+每日。
-- 判断是否适合跟卖：优先 `/catalog/info` 看跟卖结构和价格分布；再按需用 `/catalog/daily` 验证稳定性。
+### 后端接口请求参数（全量）
 
-## `/catalogs/search` 目录链接搜索
+以下参数后端均接受；`catalog_search.py` 只封装了其中一部分为 CLI（见下表脚注和下一节映射）。
 
-> ⚡ **积分消耗**：每次调用消耗 **4 积分**
+| 必填 | 参数 | 说明 | 脚本已封装 CLI |
+|:-:|---|---|:-:|
+| ✅ | siteId | `MLM`/`MLB`/`MLC`/`MLA`/`MCO` | ✅ `--site` |
+| | pageNo/pageSize | 默认 1/50 | ✅ `--page-no` / `--page-size` |
+| | searchText / keySearch | 关键词模糊搜 / 精搜 | ✅ searchText（`--search-text`）；**keySearch 未封装** |
+| | categoryId / sellerId / skuId / bland | 类目 / 店铺 / SKU / 品牌 | ✅ `--category-id` / `--seller-id` / `--sku-id` / `--bland` |
+| | month | 月份 `YYYYMM`（BSR 相关需要） | ✅ `--month` |
+| | sortKey + sortOrder | `bsr`/`sale30`/`price`/`score`/`weight` + `asc`/`desc` | ✅ `--sort-key` / `--sort-order` |
+| | priceBegin/End ~ saleStart/End | 价格/评论/评分/BSR/重量/30天销量/总销量/跟卖数/SA 区间 | ❌ **脚本未封装，需手动改脚本 body** |
+| | startTimeAdded / startTimeBegin/End | 上架 N 天内 / 上架时间段 `YYYY-MM-DD` | ❌ **同上** |
+| | follow / storageType | 跟卖(0/1) / 仓储(`FULL`/`CBT,LOCAL`) | ❌ **同上** |
 
-返回目录链接列表。适合按关键词、类目、销量、BSR、价格、评分、重量、跟卖状态等筛选官链机会。
+### CLI 映射（catalog_search.py 已封装部分）
 
-### ProductItem
+`siteId→--site`，`searchText→--search-text`，`categoryId→--category-id`，`sellerId→--seller-id`，`skuId→--sku-id`，`bland→--bland`，`month→--month`，`sortKey→--sort-key`，`sortOrder→--sort-order`，`pageNo→--page-no`，`pageSize→--page-size`。
+详情/每日模式无需 `--info`，直接 `--product-id <ID>`（不加 `--daily`=info，加了=daily）。
 
-- `id`: 商品 ID
-- `title`: 商品标题
-- `siteId`: 站点 ID
-- `categoryId`: 类目 ID
-- `price`: 价格
-- `basePrice`: 原价
-- `currencyId`: 币种 ID
-- `availableQuantity`: 可用库存
-- `soldQuantity`: 总销量
-- `sale7` / `sale30d` / `sale60` / `sale90`: 各周期销量
-- `sale714` / `sale3060`: 间隔期销量
-- `gmv7` / `gmv30` / `gmv60` / `gmv90`: 各周期 GMV
-- `sa7` / `sa30` / `sa60` / `sa90`: SA 指标
-- `bsr`: BSR 排名
-- `health`: 健康度
-- `sellerId`: 卖家 ID
-- `sellerName`: 卖家名称
-- `sellerType`: 卖家类型
-- `permalink`: 店铺链接
-- `url`: 商品 URL
-- `picSmall` / `picBig`: 图片
-- `startTime` / `dateCreated` / `lastUpdated`: 时间信息
-- `catalogListing`: 是否目录商品
-- `isUsaFull`: 是否美国 FULL 仓
-- `productId` / `familyId`: 产品 ID / Family ID
-- `rating`: 评分对象
-- `shipping`: 物流对象
-- `pathFromRoot`: 类目路径
+```bash
+# 例：关键词 phone case + BSR 倒序
+python scripts/catalog_search.py --token <TKN> --site MLM --search-text "phone case" --sort-key bsr --sort-order desc
 
-## `/catalog/info` 目录链接详情
+# 目录详情（info 模式：--product-id 不带 --daily）
+python scripts/catalog_search.py --token <TKN> --product-id MLM123456789
 
-> ⚡ **积分消耗**：每次调用消耗 **1 积分**（默认）
+# 目录每日数据（daily 模式：--product-id + --daily）
+python scripts/catalog_search.py --token <TKN> --product-id MLM123456789 --daily
+```
 
-### ProductInfoData
+### ProductItem 关键字段
 
-- `productId`: 产品 ID
-- `siteId`: 站点 ID
-- `dateCreated`: 创建时间
-- `name`: 产品名称
-- `permalink`: 产品链接
-- `pictures`: 图片列表
-- `soldQuantity`: 销售数量
-- `status`: 状态
-- `categoryId`: 类目 ID
-- `followCount`: 关注数量
-- `followItems`: 跟卖商品列表，array<FollowItem>
+销量周期：`sale7 / sale30d / sale60 / sale90`、`sale714 / sale3060`、对应 `gmv*`、`sa*`
+通用：`id / title / siteId / categoryId / price / currencyId`、`availableQuantity / soldQuantity`、`bsr / health`、`sellerId / sellerName / sellerType`、`permalink / url`、`picSmall / picBig`、`startTime / dateCreated / lastUpdated`、`catalogListing / isUsaFull`、`productId / familyId`、`rating / shipping / pathFromRoot`
 
-### FollowItem
+---
 
-- `id` / `itemId`: 商品 ID
-- `sellerId`: 卖家 ID
-- `sellerName`: 卖家名称
-- `price`: 价格
-- `sale7` / `sale30d` / `sale60` / `sale90`: 销量
-- `availableQuantity`: 库存
-- `brandId`: 品牌 ID
-- `picBig`: 图片
-- `sellerType`: 卖家类型
+## GET /catalog/info 目录详情
 
-## `/catalog/daily` 目录链接每日数据
+> ⚡ 每次 **1 积分** ｜ 必填：`productId`（如 `MLM1072916439`）
 
-> ⚡ **积分消耗**：每次调用消耗 **2 积分**
+CLI：`catalog_search.py --product-id <ID>`
 
-- `date`: 日期
-- `bsr`: BSR 排名
-- `soldQuantity`: 销售数量
-- `price`: 销售价格
+### 关键字段
 
-## 使用提示
+- 顶层：`productId / siteId / dateCreated / name / permalink / pictures / soldQuantity / status / categoryId / followCount`
+- `followItems[]`（跟卖列表）：`id / sellerId / sellerName / price / sale7 / sale30d / availableQuantity / brandId / sellerType`
 
-- 找跟卖机会：关注高销量、BSR 靠前、评分一般、跟卖结构清晰的目录链接。
-- 做差异化：看 `followItems` 里的价格、库存、卖家类型、品牌和销量。
-- 看趋势：用 `/catalog/daily` 观察 BSR、销量、价格是否稳定。
+---
 
-## 本模块接口积分明细表
+## GET /catalog/daily 每日数据
 
-> 下表为本模块包含的所有接口及其单次积分消耗，与 SKILL.md 总表 / users.md 全表完全一致。
-> 同一个接口调用多次需累计计算（例如搜目录链接 + 对 3 条候选各查一次每日数据 = 4 + 2 × 3 = 10 积分）。
+> ⚡ 每次 **2 积分** ｜ 必填：`productId`
 
-| 接口路径 | 功能描述 | 消耗积分 |
-|:---|:---|---:|
-| `POST /catalogs/search` | 目录链接查询（分页列表） | 4 |
-| `GET /catalog/daily` | 目录链接每日历史数据 | 2 |
+CLI：`catalog_search.py --product-id <ID> --daily`
+
+字段：`date / bsr / soldQuantity / price`
+
+---
+
+## 本模块积分明细表
+
+| 接口 | 功能 | 积分 |
+|---|---|---:|
+| `POST /catalogs/search` | 目录链接分页列表 | 4 |
+| `GET /catalog/daily` | 目录每日历史数据 | 2 |
 | `GET /catalog/info` | 目录链接详情 | 1 |

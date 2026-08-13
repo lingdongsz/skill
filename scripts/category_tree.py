@@ -10,9 +10,11 @@
 
 核心策略：
   1. 首次调用时，花费 10 积分请求 /category/tree?siteId=XXX 接口，
-     把整站类目树完整保存到本地缓存文件。
+     把整站类目树完整保存到本地缓存文件，同时持久化后端返回的 cacheLastModified（后端类目文件修改时间）。
   2. 后续相同站点的查询，直接读取本地缓存，**不再调用后端接口，不消耗积分**。
-  3. 缓存默认 7 天自动过期；也可以手动加 --refresh 强制刷新重新拉取（花 10 积分）。
+  3. 缓存过期判定以 **后端 cacheLastModified + TTL（默认 7 天）** 为基准：
+     当当前时间超过 cacheLastModified + 7 天，视为过期，下次查询自动重新拉取（花 10 积分）。
+     也可以手动加 --refresh 强制刷新。
   4. --search 关键词过滤、--depth 深度截断打印、--output json 导出：
      全部在本地缓存数据上完成，无需再次付费。
 
@@ -42,8 +44,10 @@
   --output     【本地输出格式】table（默认，缩进打印树）/ json（完整 JSON）
   --refresh    【本地缓存控制】强制刷新：忽略本地缓存，重新从后端拉取并覆盖缓存
                （本次消耗 10 积分）
-  --cache-ttl  【本地缓存控制】缓存有效期（秒），默认 7 天；
-               设为 0 表示永不过期。控制的是本地缓存判断，不会传给后端。
+  --cache-ttl  【本地缓存控制】以「后端 cacheLastModified（后端类目 JSON 文件修改时间）」为基准的有效期（秒），
+               默认 7 天（604800 秒）；0 表示永不过期。
+               当前时间超过 cacheLastModified + TTL 即视为缓存过期，会重新请求后端（花 10 积分）。
+               控制的是本地缓存判断，不会传给后端。
 """
 
 import argparse
@@ -63,7 +67,7 @@ from utils import (
 # 缓存配置
 # ============================================================
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# 缓存放 skills/ljxp/cache/ 目录下，与 scripts/ 同级
+# 缓存放 skills/ljxp-skills/cache/ 目录下，与 scripts/ 同级
 CACHE_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "cache"))
 DEFAULT_CACHE_TTL = 7 * 24 * 3600  # 7 天（秒）
 
@@ -78,11 +82,30 @@ def _ensure_cache_dir():
         os.makedirs(CACHE_DIR, exist_ok=True)
 
 
+def _parse_server_modified_to_ts(s):
+    """
+    把后端 cacheLastModified 字符串 "yyyy-MM-dd HH:mm:ss" 解析为本地时区的 epoch 秒（int）。
+    解析失败或为空时返回 None。
+    """
+    if not s or not isinstance(s, str):
+        return None
+    try:
+        # time.strptime 默认用本地时区解释该时间字符串（与后端格式化所用 ZoneId.systemDefault() 一致）
+        return int(time.mktime(time.strptime(s, "%Y-%m-%d %H:%M:%S")))
+    except (ValueError, TypeError):
+        return None
+
+
 def load_cached_category_tree(site, ttl=DEFAULT_CACHE_TTL):
     """
     尝试从本地缓存读取站点类目树。
+    过期判定规则（按优先级）：
+      1) 若缓存文件内记录了 server_cache_last_modified（后端返回的 cacheLastModified 字符串），
+         则以该时间 + TTL 为过期阈值：now > (server_cache_last_modified_ts + TTL) 即过期。
+      2) 否则（旧缓存文件没有该字段），退化使用本地 cached_at + TTL 判定。
+      ttl == 0 时永不过期。
     返回：(data_list, info_dict) 或 (None, None) 表示缓存未命中/过期。
-    info_dict 包含 cached_at / source 等元信息，用于打印给用户看。
+    info_dict 包含 cached_at / source / server_cache_last_modified 等元信息。
     """
     path = _cache_file_path(site)
     if not os.path.isfile(path):
@@ -104,14 +127,28 @@ def load_cached_category_tree(site, ttl=DEFAULT_CACHE_TTL):
     if not isinstance(data, list):
         return None, None
 
+    server_modified_str = blob.get("server_cache_last_modified")
+    server_modified_ts = _parse_server_modified_to_ts(server_modified_str)
+
     # ttl == 0 表示永不过期
-    if ttl > 0 and (time.time() - cached_at) > ttl:
-        return None, None
+    if ttl > 0:
+        now = time.time()
+        if server_modified_ts is not None:
+            # 规则：以 cacheLastModified + TTL 为准
+            if now > (server_modified_ts + ttl):
+                return None, None
+        else:
+            # 兼容老缓存：退化按 cached_at + TTL
+            if (now - cached_at) > ttl:
+                return None, None
 
-    return data, {"cached_at": cached_at, "source": path}
+    info = {"cached_at": cached_at, "source": path}
+    if server_modified_str:
+        info["server_cache_last_modified"] = server_modified_str
+    return data, info
 
 
-def save_cached_category_tree(site, data):
+def save_cached_category_tree(site, data, server_cache_last_modified=None):
     """把接口返回的类目树保存到本地缓存。"""
     _ensure_cache_dir()
     path = _cache_file_path(site)
@@ -120,6 +157,8 @@ def save_cached_category_tree(site, data):
         "cached_at": int(time.time()),
         "data": data,
     }
+    if server_cache_last_modified is not None:
+        blob["server_cache_last_modified"] = server_cache_last_modified
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(blob, f, ensure_ascii=False, indent=2)
@@ -261,7 +300,8 @@ def main():
     parser.add_argument("--refresh", action="store_true",
                         help="【本地缓存控制】忽略缓存、重拉后端并覆盖（本次 10 积分）。不会发给后端。")
     parser.add_argument("--cache-ttl", type=int, default=DEFAULT_CACHE_TTL,
-                        help="【本地缓存控制】有效期秒，默认 604800=7天，0=永不过期。不会发给后端。")
+                        help="【本地缓存控制】有效期（秒），以 cacheLastModified（后端类目 JSON 修改时间）为基准，"
+                             "默认 604800=7 天；0=永不过期。不会发给后端。")
 
     args = parser.parse_args()
 
@@ -279,7 +319,12 @@ def main():
         if cached_data is not None:
             raw_data = cached_data
             dt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(cache_info["cached_at"]))
-            source_hint = f"来源：本地缓存（写入于 {dt}，文件 {cache_info['source']}），本次不消耗积分 ✅"
+            parts = [f"来源：本地缓存（写入于 {dt}，文件 {cache_info['source']}），本次不消耗积分 ✅"]
+            if cache_info.get("server_cache_last_modified"):
+                svr = cache_info["server_cache_last_modified"]
+                ttl_days = "永不过期" if cache_ttl == 0 else f"{cache_ttl / 86400:.1f} 天"
+                parts.append(f"后端缓存更新于：{svr}（过期判定：{svr} + {ttl_days}）")
+            source_hint = " | ".join(parts)
             print(f"✅ {source_hint}", file=sys.stderr)
 
     # -----------------------------------------------------------
@@ -294,12 +339,20 @@ def main():
         params = {"siteId": args.site}
         response = request_get("/category/tree", token, params)
         check_response(response)
-        raw_data = response.get("data", []) or []
+        # 后端返回结构：{ code, msg, data: { list: [...], cacheLastModified: "yyyy-MM-dd" } }
+        data_payload = response.get("data") or {}
+        raw_data = data_payload.get("list", []) or []
+        server_cache_last_modified = data_payload.get("cacheLastModified")
 
         # 写入缓存（失败不影响结果，打个 warning 即可）
         try:
-            saved_path = save_cached_category_tree(args.site, raw_data)
-            source_hint = (f"来源：后端接口（已写入缓存 {saved_path}，同站点下次起可免积分复用）"
+            saved_path = save_cached_category_tree(args.site, raw_data,
+                                                    server_cache_last_modified=server_cache_last_modified)
+            if server_cache_last_modified:
+                cache_part = f"（后端缓存更新于：{server_cache_last_modified}）"
+            else:
+                cache_part = ""
+            source_hint = (f"来源：后端接口（已写入缓存 {saved_path}，同站点下次起可免积分复用）{cache_part}"
                            f"，本次消耗 10 积分")
             print(f"💾 已缓存到 {saved_path}，下次相同站点查询直接免费复用。", file=sys.stderr)
         except OSError as e:

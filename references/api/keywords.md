@@ -2,73 +2,65 @@
 
 用于热搜词查询、关键词趋势、蓝海词筛选和 Listing SEO 研究。
 
-## 对应脚本路径
+## 对应脚本
 
-- 热搜词查询：`scripts/search_keywords.py`
-- 通用请求、鉴权和格式化工具：`scripts/utils.py`
+- 热搜词查询：`scripts/search_keywords.py`（`--search-type day` 或 `month`）
 
-## 关键词相关接口选择规则
+## 接口选择规则
 
-`search_keywords.py` 封装 1 个接口，支持 2 种查询粒度：
+`/keywords/search` 支持 2 种粒度（**二选一，不要都查**）：
 
-- `/keywords/search` + `searchType=day`：日度热搜词（`--search-type day`）。
-  - **什么时候调用**：用户问"最近什么词火""最近热搜词""短期流量词""今天/本周热门搜索词"。
-  - **什么时候不调用**：用户要长期趋势、月度对比、季节性词。
-- `/keywords/search` + `searchType=month`：月度热搜词（`--search-type month`）。
-  - **什么时候调用**：用户问"本月热搜词""月度关键词""月度搜索趋势""长期热门词""季节性词判断"。
-  - **什么时候不调用**：只看短期波动、某天热度。
+| searchType | 何时调用 | 何时不调 |
+|---|---|---|
+| `day` | 最近热搜词、短期流量词、今日/本周热门 | 要长期趋势、月度对比、季节性 |
+| `month` | 本月热搜、月度关键词、长期热门、季节性判断 | 只看短期波动、某日热度 |
 
-### 调用边界
+**调用边界**：不要默认超大 pageSize，先拿 50 个。用户未指定类目可不筛 `categoryId`。拿到关键词后按需用 `/items/search` 按 title 验证供给，**不要每个关键词都跑商品搜索**。
 
-- **什么时候调用**：用户要找蓝海词、热搜词、长尾词、SEO 标题词、广告词、类目核心词、关键词供需判断。
-- **什么时候不调用**：用户只要商品列表、只要商品详情、只要类目趋势；不涉及关键词维度。
-- **不要默认全查**：
-  - 优先按用户问法选 `day` 或 `month`，不要两个都查。
-  - 不要默认超大 `pageSize`，先拿前 50 个看是否够用。
-  - 用户没有指定类目时，可以先不筛 `categoryId`；如果指定了类目，再加上类目筛选。
-- **常见组合**：拿到关键词后，再用 `/items/search` 按 `title` 验证该关键词下的商品供给、竞争和价格带；但不要对每个关键词都跑商品搜索。
+---
 
-## `/keywords/search` 热搜词查询
+## POST /keywords/search 热搜词查询
 
-> ⚡ **积分消耗**：每次调用消耗 **3 积分**
+> ⚡ 每次 **3 积分** ｜ 方法：POST
 
-返回日度或月度关键词列表。
+### 请求参数
 
-### ResultItem
+| 必填 | 参数 | 说明 |
+|:-:|---|---|
+| ✅ | siteId | `MLM`/`MLB`/`MLC`/`MLA`/`MCO` |
+| ✅ | searchType | `day`（日度，默认）/ `month`（月度） |
+| ✅(day) | runDate | 日期 `YYYY-MM-DD`（=今天可省略） |
+| ✅(month) | runMonth | 月份 `YYYYMM` |
+| | runWeek | 周度 1~53 |
+| | searchText / keySearch | 模糊/精搜关键词 |
+| | categoryId | 类目 ID（可选=全类目） |
+| | sort.key + sort.order | `sale30`/`visit30`/`viewCount`/`itemCount` + `asc`/`desc` |
+| | pageNo/pageSize | 默认 1/50 |
 
-- `dataType`: 数据类型，`day` / `month`
-- `actionKey`: 月份值或日期
-- `fromDate`: 开始日期
-- `toDate`: 结束日期
-- `key`: 关键词
-- `keyCn`: 关键词中文名
-- `visit30`: 访问量
-- `itemCount`: 本热搜词商品数
-- `itemTotalCount`: 历史总商品数
-- `viewCount`: 曝光量
-- `sale30`: 30 天销量
-- `categoryIds`: 涉及类目 ID 列表
-- `history`: 历史趋势，array<HistoryItem>
+### CLI 映射
 
-### HistoryItem
+`siteId→--site`，`searchType→--search-type`，`runDate→--run-date`，`runMonth→--run-month`，`runWeek→--run-week`，`searchText→--search-text`，`keySearch→--key-search`，`categoryId→--category-id`，`sort.key→--sort-key`，`sort.order→--sort-order`。**day/month 二选一，不同时传**。
 
-- `date`: 日期
-- `sale30`: 30 天销量
-- `totalItem`: 30 天总商品数
-- `visit30`: 30 天访问量
+```bash
+# 日度 + 精搜 phone（keySearch 精搜）
+python scripts/search_keywords.py --token <TKN> --site MLM --search-type day --run-date 2026-03-17 --key-search phone
 
-## 使用提示
+# 月度 + 类目 + 30天销量倒序
+python scripts/search_keywords.py --token <TKN> --site MLB --search-type month --run-month 202603 \
+  --category-id MLB1051 --sort-key sale30 --sort-order desc
+```
 
-- 蓝海词优先看：搜索/访问高、30 天销量好、商品数相对低、广告数低的关键词。
-- 做标题词时，区分核心词、属性词、场景词、长尾词。
-- 做广告词时，优先验证关键词下商品供给和价格带。
-- 拿到关键词后，可用商品搜索按 `title` 验证竞品数量、销量和价格。
+### 关键字段
 
-## 本模块接口积分明细表
+- `ResultItem`: `dataType（day/month）` / `key / keyCn` / `visit30` / `itemCount / itemTotalCount` / `viewCount` / `sale30` / `categoryIds[]` / `history[]`
+- `HistoryItem`: `date` / `sale30` / `totalItem` / `visit30`
 
-> 下表为本模块包含的所有接口及其单次积分消耗，与 SKILL.md 总表 / users.md 全表完全一致。
-> 同一个接口调用多次需累计计算（例如 day + month 各查一次 = 3 × 2 = 6 积分）。
+**蓝海词判断**：搜索/访问高、30天销量好、商品数相对低。
 
-| 接口路径 | 功能描述 | 消耗积分 |
-|:---|:---|---:|
-| `POST /keywords/search` | 热搜词查询（日度 / 月度） | 3 |
+---
+
+## 本模块积分明细表
+
+| 接口 | 功能 | 积分 |
+|---|---|---:|
+| `POST /keywords/search` | 热搜词查询（日度/月度） | 3 |
