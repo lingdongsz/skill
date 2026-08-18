@@ -107,8 +107,8 @@ Token 也可通过环境变量 LJXP_TOKEN 传入，无需每次敲 --token。
                         help="店铺类型: LOCAL(本土店), CBT(跨境店)")
     parser.add_argument("--follow", type=int, default=None, choices=[0, 1],
                         help="是否跟卖: 0(否), 1(是)")
-    parser.add_argument("--is-usa-full", type=lambda x: x.lower() == 'true', default=True,
-                        help="是否美国转运仓 (默认: true)")
+    parser.add_argument("--is-usa-full", type=lambda x: x.lower() == 'true', default=False,
+                        help="是否美国转运仓 (默认: false)")
 
     # 上架时间
     parser.add_argument("--start-time-added", type=int, default=None, choices=VALID_START_TIME,

@@ -169,14 +169,34 @@ def save_cached_category_tree(site, data, server_cache_last_modified=None):
 # ============================================================
 # 搜索过滤：只保留匹配节点及其完整祖先路径
 # ============================================================
+def _node_id(node):
+    """兼容读取节点 ID：后端返回 id / 原始文件 i"""
+    return node.get("id") or node.get("i") or ""
+
+def _node_name(node):
+    """兼容读取节点英文名：后端返回 name / 原始文件 n"""
+    return node.get("name") or node.get("n") or ""
+
+def _node_zhname(node):
+    """兼容读取节点中文名：后端返回 zhName / 下划线 zh_name / 原始文件 z"""
+    return node.get("zhName") or node.get("zh_name") or node.get("z") or ""
+
+def _node_children(node):
+    """兼容读取子节点：后端返回 children / 原始文件 c"""
+    c = node.get("children")
+    if c is None:
+        c = node.get("c")
+    return c or []
+
+
 def _keyword_match(node, keyword):
     """检查某个节点是否命中关键词（不区分大小写，匹配中文名或英文名）"""
     if not keyword:
         return True
     kw = keyword.lower()
-    name = (node.get("name") or "").lower()
-    zh_name = (node.get("zhName") or "").lower()
-    cid = (node.get("id") or "").lower()
+    name = _node_name(node).lower()
+    zh_name = _node_zhname(node).lower()
+    cid = _node_id(node).lower()
     return kw in name or kw in zh_name or kw in cid
 
 
@@ -192,15 +212,15 @@ def filter_tree(nodes, keyword):
     result = []
     has_match = False
     for node in nodes or []:
-        children = node.get("children") or []
+        children = _node_children(node)
         filtered_children, child_has_match = filter_tree(children, keyword)
         self_match = _keyword_match(node, keyword)
 
         if self_match or child_has_match:
             new_node = {
-                "id": node.get("id"),
-                "name": node.get("name"),
-                "zhName": node.get("zhName"),
+                "id": _node_id(node),
+                "name": _node_name(node),
+                "zhName": _node_zhname(node),
                 "children": filtered_children if child_has_match else [],
             }
             result.append(new_node)
@@ -218,16 +238,16 @@ def _print_node(node, level, depth_limit, is_last, parent_prefix):
     else:
         connector = "└─ " if is_last else "├─ "
 
-    cid = node.get("id", "N/A")
-    name = node.get("name", "")
-    zh_name = node.get("zhName") or ""
+    cid = _node_id(node) or "N/A"
+    name = _node_name(node)
+    zh_name = _node_zhname(node)
     zh_part = f"  ({zh_name})" if zh_name else ""
     print(f"{parent_prefix}{connector}[{cid}] {name}{zh_part}")
 
     if depth_limit and level + 1 >= depth_limit:
         return
 
-    children = node.get("children") or []
+    children = _node_children(node)
     if not children:
         return
 
@@ -241,13 +261,14 @@ def _print_node(node, level, depth_limit, is_last, parent_prefix):
         _print_node(child, level + 1, depth_limit, child_last, child_base_prefix)
 
 
-def print_category_tree(nodes, depth_limit=3, source_label=None):
+def print_category_tree(nodes, depth_limit=3, source_label=None, site=None):
     """打印类目树的入口函数。source_label 会在标题里显示，比如「本地缓存」。"""
     if not nodes:
         print("\n（空结果：没有找到任何类目节点）")
         return
 
-    title_parts = [f"{SITE_NAMES.get('__site__', '')} 站点类目树"]
+    site_label = SITE_NAMES.get(site, site) if site else ""
+    title_parts = [f"{site_label} 站点类目树"]
     if source_label:
         title_parts.append(f"（{source_label}）")
     title_parts.append(f"深度限制：{'不限' if depth_limit == 0 else str(depth_limit) + ' 层'}")
@@ -339,10 +360,30 @@ def main():
         params = {"siteId": args.site}
         response = request_get("/category/tree", token, params)
         check_response(response)
-        # 后端返回结构：{ code, msg, data: { list: [...], cacheLastModified: "yyyy-MM-dd" } }
+        # 【后端返回结构，严格对齐 Java Response<CategoryTreeResponse>】
+        # {
+        #   "code": 0,
+        #   "msg": "success",
+        #   "timestamp": 1234567890,
+        #   "data": {
+        #       "list": [ { "id": "...", "name": "...", "zhName": "...", "children": [...] } ],
+        #       "cacheLastModified": "yyyy-MM-dd HH:mm:ss"
+        #   }
+        # }
         data_payload = response.get("data") or {}
-        raw_data = data_payload.get("list", []) or []
-        server_cache_last_modified = data_payload.get("cacheLastModified")
+        if not isinstance(data_payload, dict):
+            print(f"⚠️  后端返回 data 字段不是对象，实际结构: {type(data_payload)}", file=sys.stderr)
+            print(f"   原始返回 keys: {list(response.keys())}", file=sys.stderr)
+            if isinstance(data_payload, list):
+                # 兼容 data 直接就是 list 的情况（极少，兜底）
+                raw_data = data_payload or []
+                server_cache_last_modified = None
+            else:
+                print("错误：无法解析后端返回结构，请确认 /category/tree 接口是否正常", file=sys.stderr)
+                sys.exit(1)
+        else:
+            raw_data = data_payload.get("list", []) or []
+            server_cache_last_modified = data_payload.get("cacheLastModified")
 
         # 写入缓存（失败不影响结果，打个 warning 即可）
         try:
@@ -363,8 +404,8 @@ def main():
     # Step 3: JSON 输出模式（完整原数据，不过滤不截断）
     # -----------------------------------------------------------
     if args.output == "json":
-        # 构造一个标准的 Response 结构（和后端返回一致），保证 AI 解析方式统一
-        wrapper = {"code": 0, "message": "success", "data": raw_data}
+        # 【对齐后端 Response 字段命名】key 统一用 msg 而不是 message
+        wrapper = {"code": 0, "msg": "success", "data": raw_data}
         output_json(wrapper)
         return
 
@@ -380,7 +421,7 @@ def main():
             return
         data_to_print = filtered
 
-    print_category_tree(data_to_print, depth_limit=args.depth, source_label=source_hint)
+    print_category_tree(data_to_print, depth_limit=args.depth, source_label=source_hint, site=args.site)
 
     if args.search:
         print(f"\n🔍 匹配关键词：\"{args.search}\"（上面只显示了匹配节点及其祖先类目）")

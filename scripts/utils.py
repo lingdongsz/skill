@@ -49,7 +49,7 @@ def get_token(args_token=None):
     return token
 
 
-def request_get(path, token, params=None, timeout=30):
+def request_get(path, token, params=None, timeout=60):
     """发送 GET 请求"""
     url = BASE_URL + path
     if params:
@@ -79,7 +79,7 @@ def request_get(path, token, params=None, timeout=30):
         sys.exit(1)
 
 
-def request_post(path, token, body, timeout=30):
+def request_post(path, token, body, timeout=60):
     """发送 POST 请求"""
     url = BASE_URL + path
     headers = {
@@ -109,7 +109,9 @@ def check_response(response):
     """检查API响应是否成功，失败时输出错误并退出"""
     code = response.get("code")
     if code != 0 and code != 200:
-        print(f"API返回错误: code={code}, msg={response.get('msg', 'N/A')}", file=sys.stderr)
+        # 【字段兼容】正常 Response 返回 msg；认证过滤器错误返回 message
+        msg = response.get("msg") or response.get("message") or "N/A"
+        print(f"API返回错误: code={code}, msg={msg}", file=sys.stderr)
         sys.exit(1)
     return True
 
